@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { catalogItem } from "@/lib/catalog";
 import { cookieValue, SESSION_COOKIE, isAdminEmail } from "@/lib/auth";
 import { jsonResponse, sameOrigin } from "@/lib/http";
-import { adminSessionFor, can } from "@/lib/admin-auth";
 import { clientIp, distributedRateLimit } from "@/lib/rate-limit";
 
 const MAX_QTY=25, MAX_TOTAL=5000, CARD_FEE_PCT=0.045, CARD_FEE_MIN=3.99;
@@ -18,9 +17,9 @@ function priceItems(raw:unknown):{items:Line[];subtotal:number;invalid:number[]}
   const items:Line[]=[]; const invalid:number[]=[];
   if(!Array.isArray(raw)) return {items,subtotal:0,invalid};
   for(const entry of raw){
-    const line=(entry??{}) as Record<string,unknown>; const item=catalogItem(line['id']);
-    if(!item || item.a!==true){ const id=Number(line['id']); if(Number.isInteger(id)) invalid.push(id); continue; }
-    const q=Math.max(1,Math.min(MAX_QTY,parseInt(String(line['q']??1),10)||1));
+    const line=(entry??{}) as Record<string,unknown>; const item=catalogItem(line.id);
+    if(!item || item.a!==true){ const id=Number(line.id); if(Number.isInteger(id)) invalid.push(id); continue; }
+    const q=Math.max(1,Math.min(MAX_QTY,parseInt(String(line.q??1),10)||1));
     const ex=items.find(x=>x.id===item.id); if(ex) ex.q=Math.min(MAX_QTY,ex.q+q); else items.push({id:item.id,n:item.n,q,p:item.p});
   }
   items.sort((a,b)=>a.id-b.id); const subtotal=round2(items.reduce((s,x)=>s+x.p*x.q,0)); return {items,subtotal,invalid};
@@ -42,7 +41,7 @@ async function moonpayVerify(intentId:string,expectedTotal:number,expectedEmail:
     const r=await fetch(`${endpoint}/v1/transactions/ext/${encodeURIComponent(intentId)}?apiKey=${encodeURIComponent(key)}`,{headers:{accept:"application/json"},cache:"no-store"});
     if(!r.ok)return false;
     const data=await r.json() as Record<string,unknown>;
-    const txs=Array.isArray(data)?data:(Array.isArray(data['data'])?data['data']:[data]);
+    const txs=Array.isArray(data)?data:(Array.isArray(data.data)?data.data:[data]);
     return txs.some((tx:any)=>{
       const status=String(tx.status||"").toLowerCase();
       const amount=Number(tx.baseCurrencyAmount);
@@ -61,14 +60,14 @@ async function createOrder(request:Request,body:Record<string,unknown>){
   const session=await sessionFor(request); if(!session)return json({ok:false,error:"unauthorized"},401);
   const sql=await database(); if(!(await distributedRateLimit(sql,`order:create:${clientIp(request)}:${session.email}`,12,3600000)))return json({ok:false,error:"rate_limited"},429);
   await cleanupExpired(sql);
-  const intentId=String(body['intentId']??body['intent_id']??"").trim(); if(!validIntent(intentId))return json({ok:false,error:"invalid_intent"},400);
-  const priced=priceItems(body['items']); if(priced.invalid.length)return json({ok:false,error:"unavailable_item",itemId:priced.invalid[0]},409); if(!priced.items.length)return json({ok:false,error:"empty_cart"},400);
+  const intentId=String(body.intentId??body.intent_id??"").trim(); if(!validIntent(intentId))return json({ok:false,error:"invalid_intent"},400);
+  const priced=priceItems(body.items); if(priced.invalid.length)return json({ok:false,error:"unavailable_item",itemId:priced.invalid[0]},409); if(!priced.items.length)return json({ok:false,error:"empty_cart"},400);
   const fee=cardFee(priced.subtotal), total=round2(priced.subtotal+fee); if(!Number.isFinite(total)||total<=0||total>MAX_TOTAL)return json({ok:false,error:"invalid_total"},400);
   const existing=(await sql`SELECT code,intent_id,status,paid,email,roblox_user,game,items,subtotal,fee,total,created_at,data FROM orders WHERE intent_id=${intentId} LIMIT 1`) as OrderRow[];
   if(existing[0]){const o=existing[0]; if((o.email||"").toLowerCase()!==session.email&&!session.admin)return json({ok:false,error:"forbidden"},403); return json({ok:true,code:o.code,status:o.status,order:apiOrder(o)});}
   // A card order is created only after the server verifies MoonPay's completed transaction.
   if(!(await moonpayVerify(intentId,total,session.email)))return json({ok:false,error:"payment_not_verified"},402);
-  const email=session.email; const robloxUser=String(body['user']??"").trim().replace(/[^A-Za-z0-9_. -]/g,"").slice(0,60); const game=String(body['game']??"mm2").trim().slice(0,30);
+  const email=session.email; const robloxUser=String(body.user??"").trim().slice(0,60); const game=String(body.game??"mm2").trim().slice(0,30);
   const items=priced.items.map(i=>({id:i.id,n:i.n,q:i.q,p:i.p})); const code=String(100000+Math.floor(Math.random()*900000));
   try{
     await sql`SELECT create_order_atomic(${code},${intentId},${email},${robloxUser},${game},${JSON.stringify(items)}::jsonb,${priced.subtotal},${fee},${total},${JSON.stringify({pay:"Visa / Card (MoonPay)",paymentVerified:true,intentId})}::jsonb)`;
@@ -81,17 +80,9 @@ async function createOrder(request:Request,body:Record<string,unknown>){
   const rows=(await sql`SELECT code,intent_id,status,paid,email,roblox_user,game,items,subtotal,fee,total,created_at,data FROM orders WHERE code=${code} LIMIT 1`) as OrderRow[]; const o=rows[0]!; return json({ok:true,code:o.code,status:o.status,order:apiOrder(o)},201);
 }
 async function transition(request:Request,body:Record<string,unknown>,action:string){
-  if(!sameOrigin(request))return json({ok:false,error:"forbidden"},403);
-  if(!cookieValue(request,SESSION_COOKIE)||!process.env["DATABASE_URL"])return json({ok:false,error:"forbidden"},403);
-  const sqlForAuth=await database();
-  // Same RBAC source as /api/public/admin: owners from ADMIN_EMAILS, staff from
-  // admin_staff with only their role's permissions. Confirming an order marks it
-  // paid, so it requires the payments permission; cancelling requires order_status.
-  const session=await adminSessionFor(request,sqlForAuth as never);
-  if(!session)return json({ok:false,error:"forbidden"},403);
-  if(!can(session,action==="confirm"?"payments":"order_status"))return json({ok:false,error:"forbidden"},403);
+  if(!sameOrigin(request))return json({ok:false,error:"forbidden"},403); const session=await sessionFor(request); if(!session?.admin)return json({ok:false,error:"forbidden"},403);
   const sql=await database(); if(!(await distributedRateLimit(sql,`order:${action}:${clientIp(request)}:${session.email}`,60,60000)))return json({ok:false,error:"rate_limited"},429);
-  const code=String(body['code']??"").trim(); if(!/^\d{6}$/.test(code))return json({ok:false,error:"invalid"},400);
+  const code=String(body.code??"").trim(); if(!/^\d{6}$/.test(code))return json({ok:false,error:"invalid"},400);
   if(action==="confirm"){
     const rows=(await sql`UPDATE orders SET status='delivered',paid=true,updated_at=now() WHERE code=${code} AND status IN ('pending_payment','pending','processing','paid') AND COALESCE((data->>'paymentVerified')::boolean,false)=true RETURNING code`) as Array<{code:string}>;
     if(!rows[0]){const r=(await sql`SELECT status FROM orders WHERE code=${code}`) as Array<{status:string}>; if(!r[0])return json({ok:false,error:"not_found"},404); return json({ok:false,error:"payment_not_verified_or_already_processed",status:r[0].status},409);}
@@ -103,9 +94,9 @@ async function transition(request:Request,body:Record<string,unknown>,action:str
   return json({ok:true,code,status:"cancelled"});
 }
 async function mine(request:Request){const session=await sessionFor(request);if(!session)return json({ok:false,error:"unauthorized"},401);const sql=await database();const rows=(await sql`SELECT code,intent_id,status,paid,email,roblox_user,game,items,subtotal,fee,total,created_at,data FROM orders WHERE email=${session.email} ORDER BY created_at DESC LIMIT 200`) as OrderRow[];return json({ok:true,orders:rows.map(apiOrder)});}
-async function list(request:Request){if(!cookieValue(request,SESSION_COOKIE)||!process.env["DATABASE_URL"])return json({ok:false,error:"forbidden"},403);const sqlAuth=await database();const session=await adminSessionFor(request,sqlAuth as never);if(!session||!can(session,"order_status"))return json({ok:false,error:"forbidden"},403);const sql=await database();const rows=(await sql`SELECT code,intent_id,status,paid,email,roblox_user,game,items,subtotal,fee,total,created_at,data FROM orders ORDER BY created_at DESC LIMIT 500`) as OrderRow[];return json({ok:true,orders:rows.map(apiOrder)});}
+async function list(request:Request){const session=await sessionFor(request);if(!session?.admin)return json({ok:false,error:"forbidden"},403);const sql=await database();const rows=(await sql`SELECT code,intent_id,status,paid,email,roblox_user,game,items,subtotal,fee,total,created_at,data FROM orders ORDER BY created_at DESC LIMIT 500`) as OrderRow[];return json({ok:true,orders:rows.map(apiOrder)});}
 export const Route=createFileRoute("/api/public/orders")({server:{handlers:{
-  GET:async({request})=>{const s=await sessionFor(request);if(!s)return json({orders:[]});if(new URL(request.url).searchParams.get("all")==="1"){const sqlAuth=await database();const a=await adminSessionFor(request,sqlAuth as never);if(a&&can(a,"order_status"))return list(request);}return mine(request);},
-  POST:async({request})=>{let b:Record<string,unknown>;try{b=(await request.json()) as Record<string,unknown>}catch{return json({ok:false,error:"invalid"},400)}const a=String(b['action']??"create").toLowerCase();if(a==="create")return createOrder(request,b);if(a==="confirm"||a==="cancel")return transition(request,b,a);if(a==="mine")return mine(request);if(a==="list")return list(request);return json({ok:false,error:"unknown_action"},400);},
-  PATCH:async({request})=>{let b:Record<string,unknown>;try{b=(await request.json()) as Record<string,unknown>}catch{return json({ok:false,error:"invalid"},400)}const a=String(b['action']??"").toLowerCase();if(a!=="confirm"&&a!=="cancel")return json({ok:false,error:"unknown_action"},400);return transition(request,b,a);}
+  GET:async({request})=>{const s=await sessionFor(request);if(!s)return json({orders:[]});return s.admin&&new URL(request.url).searchParams.get("all")==="1"?list(request):mine(request);},
+  POST:async({request})=>{let b:Record<string,unknown>;try{b=(await request.json()) as Record<string,unknown>}catch{return json({ok:false,error:"invalid"},400)}const a=String(b.action??"create").toLowerCase();if(a==="create")return createOrder(request,b);if(a==="confirm"||a==="cancel")return transition(request,b,a);if(a==="mine")return mine(request);if(a==="list")return list(request);return json({ok:false,error:"unknown_action"},400);},
+  PATCH:async({request})=>{let b:Record<string,unknown>;try{b=(await request.json()) as Record<string,unknown>}catch{return json({ok:false,error:"invalid"},400)}const a=String(b.action??"").toLowerCase();if(a!=="confirm"&&a!=="cancel")return json({ok:false,error:"unknown_action"},400);return transition(request,b,a);}
 }}});

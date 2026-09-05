@@ -35,3 +35,9 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Vercel build output
+.vercel/
+
+# TS build info
+*.tsbuildinfo

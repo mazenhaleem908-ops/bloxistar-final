@@ -12,7 +12,7 @@ const navGroups:any[]=[
  {label:"Control room",items:[["analytics","Analytics",BarChart3],["security","Security",ShieldCheck],["audit","Audit logs",PanelLeft],["staff","Staff & access",Settings2]]}
 ];
 
-async function api(action?:any){const r=await fetch("/api/public/admin",{method:action?"POST":"GET",credentials:"same-origin",...(action?{headers:{"content-type":"application/json"},body:JSON.stringify(action)}:{})});const j=await r.json().catch(()=>({ok:false,error:"invalid_response"}));if(!r.ok)throw new Error(j.error||"forbidden");return j;}
+async function api(action?:any){const r=await fetch("/api/public/admin",{method:action?"POST":"GET",headers:action?{"content-type":"application/json"}:undefined,credentials:"same-origin",body:action?JSON.stringify(action):undefined});const j=await r.json().catch(()=>({ok:false,error:"invalid_response"}));if(!r.ok)throw new Error(j.error||"forbidden");return j;}
 
 function AdminPage(){
  const [view,setView]=useState<View>("overview"),[mobile,setMobile]=useState(false),[data,setData]=useState<Data|null>(null),[error,setError]=useState(""),[notice,setNotice]=useState("");
@@ -38,7 +38,7 @@ function AdminPage(){
    </main></div>
  </div>
 }
-const labelFor=(v:View)=>v==="crypto"?"Crypto queue":v==="audit"?"Audit logs":v==="staff"?"Staff & access":(v.charAt(0).toUpperCase()+v.slice(1));
+const labelFor=(v:View)=>v==="crypto"?"Crypto queue":v==="audit"?"Audit logs":v==="staff"?"Staff & access":v[0].toUpperCase()+v.slice(1);
 function Panel({children,className=""}:{children:any;className?:string}){return <section className={`admin-panel ${className}`}>{children}</section>}
 function Heading({title,detail,action}:{title:string;detail:string;action?:any}){return <div className="admin-heading"><div><p>LIVE / NEON</p><h1>{title}</h1><span>{detail}</span></div>{action}</div>}
 function Button({children,onClick,secondary=false}:{children:any;onClick?:()=>void;secondary?:boolean}){return <button className={`admin-button ${secondary?"secondary":""}`} onClick={onClick}>{children}</button>}

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { jsonResponse, preflight, safeHandler, sameOrigin } from "@/lib/http";
 import { clientIp, distributedRateLimit } from "@/lib/rate-limit";
-import { hashCode } from "@/lib/auth";
+import { sendResendEmail } from "@/lib/resend";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -58,7 +58,7 @@ export const Route = createFileRoute("/api/public/auth/send-code")({
             await sql`DELETE FROM auth_codes WHERE email = ${email}`;
             await sql`
               INSERT INTO auth_codes (email, code, expires_at)
-              VALUES (${email}, ${await hashCode(`${email}:${code}`)}, now() + interval '10 minutes')
+              VALUES (${email}, ${code}, now() + interval '10 minutes')
             `;
           } catch (insertError) {
             console.error("[auth/send-code] db insert failed", insertError);
@@ -83,31 +83,15 @@ export const Route = createFileRoute("/api/public/auth/send-code")({
           const text = `Your BloxStar verification code is ${code}. It expires in 10 minutes.`;
 
 
-          let res: Response;
-          try {
-            res = await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${apiKey}`,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({
-                from: `${fromName} <${from}>`,
-                to: [email],
-                reply_to: replyTo,
-                subject,
-                html,
-                text,
-              }),
-            });
-          } catch (networkError) {
-            console.error("[auth/send-code] resend request failed", networkError);
-            return json({ ok: false, error: "email_send_failed" }, 502);
-          }
-
-          if (!res.ok) {
-            const detail = await res.text();
-            console.error("[auth/send-code] resend failed", res.status, detail);
+          const sent = await sendResendEmail({
+            from: `${fromName} <${from}>`,
+            to: [email],
+            reply_to: replyTo,
+            subject,
+            html,
+            text,
+          });
+          if (!sent.ok) {
             return json({ ok: false, error: "email_send_failed" }, 502);
           }
 

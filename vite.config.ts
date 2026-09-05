@@ -12,7 +12,10 @@ export default defineConfig({
   server: { port: 8080, host: true, strictPort: true },
   preview: { port: 8080, host: true },
   resolve: {
-    alias: { "@": path.resolve(import.meta.dirname, "src") },
+    alias: [
+      { find: /^@\/lib\//, replacement: path.resolve(import.meta.dirname, "lib") + "/" },
+      { find: /^@\//, replacement: path.resolve(import.meta.dirname, "src") + "/" },
+    ],
     dedupe: ["react", "react-dom", "@tanstack/react-router", "@tanstack/react-query"],
   },
   plugins: [

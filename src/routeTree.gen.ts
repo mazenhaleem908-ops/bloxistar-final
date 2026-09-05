@@ -17,9 +17,9 @@ import { Route as Mm2RouteImport } from './routes/mm2'
 import { Route as RobloxItemsRouteImport } from './routes/roblox-items'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as ApiPublicAbandonedCartRouteImport } from './routes/api/public/abandoned-cart'
+import { Route as ApiPublicAccountRouteImport } from './routes/api/public/account'
 import { Route as ApiPublicAdminRouteImport } from './routes/api/public/admin'
 import { Route as ApiPublicOrdersRouteImport } from './routes/api/public/orders'
-import { Route as ApiPublicUserdataRouteImport } from './routes/api/public/userdata'
 import { Route as ApiPublicWalletRouteImport } from './routes/api/public/wallet'
 import { Route as AuthGoogleStartRouteImport } from './routes/auth.google.start'
 import { Route as ApiPublicAuthHealthRouteImport } from './routes/api/public/auth.health'
@@ -71,6 +71,11 @@ const ApiPublicAbandonedCartRoute = ApiPublicAbandonedCartRouteImport.update({
   path: '/api/public/abandoned-cart',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicAccountRoute = ApiPublicAccountRouteImport.update({
+  id: '/api/public/account',
+  path: '/api/public/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicAdminRoute = ApiPublicAdminRouteImport.update({
   id: '/api/public/admin',
   path: '/api/public/admin',
@@ -79,11 +84,6 @@ const ApiPublicAdminRoute = ApiPublicAdminRouteImport.update({
 const ApiPublicOrdersRoute = ApiPublicOrdersRouteImport.update({
   id: '/api/public/orders',
   path: '/api/public/orders',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicUserdataRoute = ApiPublicUserdataRouteImport.update({
-  id: '/api/public/userdata',
-  path: '/api/public/userdata',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicWalletRoute = ApiPublicWalletRouteImport.update({
@@ -149,9 +149,9 @@ export interface FileRoutesByFullPath {
   '/roblox-items': typeof RobloxItemsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/api/public/abandoned-cart': typeof ApiPublicAbandonedCartRoute
+  '/api/public/account': typeof ApiPublicAccountRoute
   '/api/public/admin': typeof ApiPublicAdminRoute
   '/api/public/orders': typeof ApiPublicOrdersRoute
-  '/api/public/userdata': typeof ApiPublicUserdataRoute
   '/api/public/wallet': typeof ApiPublicWalletRoute
   '/auth/google/start': typeof AuthGoogleStartRoute
   '/api/public/auth/health': typeof ApiPublicAuthHealthRoute
@@ -172,9 +172,9 @@ export interface FileRoutesByTo {
   '/roblox-items': typeof RobloxItemsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/api/public/abandoned-cart': typeof ApiPublicAbandonedCartRoute
+  '/api/public/account': typeof ApiPublicAccountRoute
   '/api/public/admin': typeof ApiPublicAdminRoute
   '/api/public/orders': typeof ApiPublicOrdersRoute
-  '/api/public/userdata': typeof ApiPublicUserdataRoute
   '/api/public/wallet': typeof ApiPublicWalletRoute
   '/auth/google/start': typeof AuthGoogleStartRoute
   '/api/public/auth/health': typeof ApiPublicAuthHealthRoute
@@ -196,9 +196,9 @@ export interface FileRoutesById {
   '/roblox-items': typeof RobloxItemsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/api/public/abandoned-cart': typeof ApiPublicAbandonedCartRoute
+  '/api/public/account': typeof ApiPublicAccountRoute
   '/api/public/admin': typeof ApiPublicAdminRoute
   '/api/public/orders': typeof ApiPublicOrdersRoute
-  '/api/public/userdata': typeof ApiPublicUserdataRoute
   '/api/public/wallet': typeof ApiPublicWalletRoute
   '/auth/google/start': typeof AuthGoogleStartRoute
   '/api/public/auth/health': typeof ApiPublicAuthHealthRoute
@@ -221,9 +221,9 @@ export interface FileRouteTypes {
     | '/roblox-items'
     | '/auth/callback'
     | '/api/public/abandoned-cart'
+    | '/api/public/account'
     | '/api/public/admin'
     | '/api/public/orders'
-    | '/api/public/userdata'
     | '/api/public/wallet'
     | '/auth/google/start'
     | '/api/public/auth/health'
@@ -244,9 +244,9 @@ export interface FileRouteTypes {
     | '/roblox-items'
     | '/auth/callback'
     | '/api/public/abandoned-cart'
+    | '/api/public/account'
     | '/api/public/admin'
     | '/api/public/orders'
-    | '/api/public/userdata'
     | '/api/public/wallet'
     | '/auth/google/start'
     | '/api/public/auth/health'
@@ -267,9 +267,9 @@ export interface FileRouteTypes {
     | '/roblox-items'
     | '/auth/callback'
     | '/api/public/abandoned-cart'
+    | '/api/public/account'
     | '/api/public/admin'
     | '/api/public/orders'
-    | '/api/public/userdata'
     | '/api/public/wallet'
     | '/auth/google/start'
     | '/api/public/auth/health'
@@ -291,9 +291,9 @@ export interface RootRouteChildren {
   RobloxItemsRoute: typeof RobloxItemsRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   ApiPublicAbandonedCartRoute: typeof ApiPublicAbandonedCartRoute
+  ApiPublicAccountRoute: typeof ApiPublicAccountRoute
   ApiPublicAdminRoute: typeof ApiPublicAdminRoute
   ApiPublicOrdersRoute: typeof ApiPublicOrdersRoute
-  ApiPublicUserdataRoute: typeof ApiPublicUserdataRoute
   ApiPublicWalletRoute: typeof ApiPublicWalletRoute
   AuthGoogleStartRoute: typeof AuthGoogleStartRoute
   ApiPublicAuthHealthRoute: typeof ApiPublicAuthHealthRoute
@@ -364,6 +364,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicAbandonedCartRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/account': {
+      id: '/api/public/account'
+      path: '/api/public/account'
+      fullPath: '/api/public/account'
+      preLoaderRoute: typeof ApiPublicAccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/admin': {
       id: '/api/public/admin'
       path: '/api/public/admin'
@@ -376,13 +383,6 @@ declare module '@tanstack/react-router' {
       path: '/api/public/orders'
       fullPath: '/api/public/orders'
       preLoaderRoute: typeof ApiPublicOrdersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/userdata': {
-      id: '/api/public/userdata'
-      path: '/api/public/userdata'
-      fullPath: '/api/public/userdata'
-      preLoaderRoute: typeof ApiPublicUserdataRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/wallet': {
@@ -467,9 +467,9 @@ const rootRouteChildren: RootRouteChildren = {
   RobloxItemsRoute: RobloxItemsRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   ApiPublicAbandonedCartRoute: ApiPublicAbandonedCartRoute,
+  ApiPublicAccountRoute: ApiPublicAccountRoute,
   ApiPublicAdminRoute: ApiPublicAdminRoute,
   ApiPublicOrdersRoute: ApiPublicOrdersRoute,
-  ApiPublicUserdataRoute: ApiPublicUserdataRoute,
   ApiPublicWalletRoute: ApiPublicWalletRoute,
   AuthGoogleStartRoute: AuthGoogleStartRoute,
   ApiPublicAuthHealthRoute: ApiPublicAuthHealthRoute,

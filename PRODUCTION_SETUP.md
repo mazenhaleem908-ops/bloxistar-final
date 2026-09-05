@@ -18,3 +18,5 @@ Required Vercel environment variables:
 Do not put any of these values in the repository except safe placeholders in `.env.example`.
 
 Before the first production deployment, apply `db/schema.sql` to Neon.
+Then apply the additive `db/migrations/002_admin_panel.sql` migration to enable the `/admin` workspace tables.
+Do not run either migration repeatedly through the application runtime; apply them once through your Neon SQL console/migration workflow.

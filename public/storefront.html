@@ -19,7 +19,12 @@
   /* same-origin on the live domain (normalised to www), production origin elsewhere */
   /* v55: the API is deployed with the site, so it is always same-origin.
      The bare apex is the one exception - POSTs must not cross the 308 to www. */
-  window.BS_API_BASE = (h === 'bloxistar.com' || location.protocol === 'file:') ? PROD : '';
+  /* v56: the API always ships with the site, so it is ALWAYS same-origin.
+     Hard-coding the production host broke every deploy served from another
+     hostname (custom domain, *.vercel.app, staging) because the POSTs became
+     cross-origin and were rejected. Only file:// has no origin to talk to. */
+  window.BS_API_BASE = (location.protocol === 'file:') ? PROD : '';
+  void h;
   void onLive;
   window.BS_API = function(path){
     return String(window.BS_API_BASE).replace(/\/+$/,'') + path;
@@ -1652,8 +1657,7 @@ footer.site b{display:block;font-family:'Fredoka';font-weight:700;color:var(--ye
         <p>BloxStar is not affiliated with, endorsed by, or sponsored by Roblox or any game developers. All trademarks belong to their respective owners.</p>
       </div>
     </div>
-    <div class="bsx-foot-bottom">
-<div class="bsx-foot-social" aria-label="BloxStar social links">
+    <div class="bsx-foot-social" aria-label="BloxStar social links">
         <a class="bsx-social-link" href="https://discord.gg/xmFZgNt94" target="_blank" rel="noopener noreferrer" aria-label="Join our Discord">
           <svg viewBox="0 0 24 24" role="img" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.128 12.3 12.3 0 0 1-1.873.891.077.077 0 0 0-.041.107c.36.698.772 1.363 1.225 1.993a.076.076 0 0 0 .084.029 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.055c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.029zM8.02 15.331c-1.182 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.095 2.157 2.418 0 1.334-.956 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.095 2.157 2.418 0 1.334-.946 2.419-2.157 2.419z"/></svg>
         </a>
@@ -1661,6 +1665,7 @@ footer.site b{display:block;font-family:'Fredoka';font-weight:700;color:var(--ye
           <svg viewBox="0 0 24 24" role="img" aria-hidden="true"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
         </a>
     </div>
+    <div class="bsx-foot-bottom">
       <div class="bsx-foot-meta">
         <small>© 2026, BloxStar.</small>
       </div>
@@ -1937,7 +1942,7 @@ function go(p){
   if(p==='checkout'){ selectCardMethod(); prefillCheckoutEmail(); }
   if(p==='orderdetails') paintOrderDetails();
   if(p==='account') paintAccount();
-  if(p==='admin'){ location.replace('/admin'); return; }
+  if(p==='admin') enterAdminIfAllowed();
   if(p==='shop') refreshShopView();
   if(p==='home') paintPopular();
 }
@@ -2783,7 +2788,7 @@ function googleSignIn(){
     if(!ret||ret.charAt(0)!=='/')ret='/';
     if(typeof toast==='function')toast('Taking you to Google…');
     /* Server-side Google OIDC + PKCE flow. */
-    location.href='/api/public/auth/google/start?return='+encodeURIComponent(ret);
+location.href='/auth/google/start?return='+encodeURIComponent(ret);
   }catch(e){
     if(typeof toast==='function')toast('Could not open Google sign-in — please try again');
   }
@@ -4504,6 +4509,9 @@ function bsSaveSession(token,email,admin){
   /* token is intentionally ignored: the server keeps it in an HttpOnly cookie. */
   try{localStorage.setItem('bs_session',JSON.stringify({email:(email||'').toLowerCase(),admin:!!admin}));}catch(e){}
   try{if(typeof adminOk!=='undefined')adminOk=admin===true;if(typeof paintAuth==='function')paintAuth()}catch(e){}
+  /* pull the account's balance + saved data straight from the server on sign-in */
+  try{if(window.BSWALLET)window.BSWALLET.refresh()}catch(e){}
+  try{if(window.BSACCOUNT)window.BSACCOUNT.pull()}catch(e){}
 }
 function bsClearSession(){
   try{fetch((BS_AUTH_API||'') .replace(/\/$/,'')+'/session',{method:'DELETE',credentials:'same-origin'}).catch(function(){})}catch(e){}
@@ -4559,7 +4567,10 @@ window.BSWALLET=(function(){
     balance:function(){if(mail()!==state.email)loadCache();return state.balance},
     history:function(){if(mail()!==state.email)loadCache();return state.history||[]},
     loaded:function(){return state.loaded},
-    signedIn:function(){return !!tok()},
+    /* A signed-in user is one with a validated server session cookie.
+       (This used to test a client token that is always empty now, so the
+       balance never refreshed on a second device and showed $0.00.) */
+    signedIn:function(){return !!mail()},
     refresh:function(){return call({action:'get'})},
     spend:function(a,note,kind){return call({action:'spend',amount:a,note:note||'',kind:kind||'order'})},
     withdraw:function(a,method,dest){return call({action:'withdraw',amount:a,method:method,dest:dest})},
@@ -4573,9 +4584,86 @@ window.BSWALLET=(function(){
   setInterval(tick,20000);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)tick()});
   window.addEventListener('focus',tick);
+  window.addEventListener('bs-account-ready',tick);
   return api;
 })();
 </script>
+<script>
+/* =========================================================
+   BLOXSTAR — SERVER-SIDE ACCOUNT DATA (cross-device profile)
+   Wishlist, profile, avatar, saved Roblox username and promo codes used to
+   live only in this browser, so the same account looked empty on another
+   device. They are now mirrored to /api/public/account, keyed by the
+   signed-in email and protected by the HttpOnly session cookie.
+   ========================================================= */
+window.BSACCOUNT=(function(){
+  var API=(window.BS_API_BASE||'')+'/api/public/account';
+  /* per-account keys that must follow the user across devices */
+  var KEYS=['bs_profiles','bs_profiles_v26','bs_avatar_choice','bs_promo_codes','bs_roblox_user','bs_user'];
+  var state={email:'',loaded:false,timer:null,busy:false,last:''};
+  function mail(){try{var s=(typeof bsSession==='function')&&bsSession();return (s&&s.email)||''}catch(e){return ''}}
+  function keysFor(e){return KEYS.concat(['bs_wishlist_'+e])}
+  function snapshot(e){
+    var out={};
+    keysFor(e).forEach(function(k){try{var v=localStorage.getItem(k);if(v!=null)out[k]=v}catch(x){}});
+    return out;
+  }
+  function applyData(e,data){
+    if(!data||typeof data!=='object')return false;
+    var changed=false;
+    keysFor(e).forEach(function(k){
+      var v=data[k];
+      if(typeof v!=='string')return;
+      try{if(localStorage.getItem(k)!==v){localStorage.setItem(k,v);changed=true}}catch(x){}
+    });
+    return changed;
+  }
+  function announce(){try{window.dispatchEvent(new Event('bs-account-ready'))}catch(x){}
+    try{if(typeof paintAuth==='function')paintAuth()}catch(x){}}
+  function pull(){
+    var e=mail(); if(!e)return Promise.resolve(null);
+    return fetch(API,{credentials:'same-origin'})
+      .then(function(r){return r.json().catch(function(){return{ok:false}})})
+      .then(function(j){
+        if(!j||!j.ok)return null;
+        state.email=e;state.loaded=true;
+        var localSnap=snapshot(e);
+        var changed=applyData(e,j.data);
+        /* first sign-in on a device that already holds data: keep it and upload */
+        var hasLocal=Object.keys(localSnap).length>0;
+        if(hasLocal)push(true);
+        if(changed)announce();
+        return j;
+      }).catch(function(){return null});
+  }
+  function push(force){
+    var e=mail(); if(!e)return Promise.resolve(null);
+    var data=snapshot(e), body=JSON.stringify(data);
+    if(!force&&body===state.last)return Promise.resolve(null);
+    state.last=body;
+    return fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
+      body:JSON.stringify({action:'save',data:data})})
+      .then(function(r){return r.json().catch(function(){return{ok:false}})})
+      .catch(function(){return null});
+  }
+  function schedule(){clearTimeout(state.timer);state.timer=setTimeout(function(){push(false)},1200)}
+  /* watch the tracked keys without touching any existing feature code */
+  try{
+    var _set=localStorage.setItem.bind(localStorage);
+    localStorage.setItem=function(k,v){
+      _set(k,v);
+      try{var e=mail();if(e&&(KEYS.indexOf(k)>-1||k==='bs_wishlist_'+e))schedule()}catch(x){}
+    };
+  }catch(x){}
+  function tick(){var e=mail();if(!e){state.email='';state.loaded=false;return}if(e!==state.email||!state.loaded)pull()}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tick);else tick();
+  setInterval(tick,15000);
+  window.addEventListener('focus',tick);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)tick()});
+  return {pull:pull,save:function(){return push(true)},loaded:function(){return state.loaded}};
+})();
+</script>
+
 
 <!-- ================= BLOXSTAR ADD-ONS v1 (wishlist / notifications / product details / reviews / inventory / admin stats / smart search) ================= -->
 <style>
@@ -6578,9 +6666,6 @@ footer.site{background:#000!important;color:#fff!important;text-align:left!impor
 .bsx-foot a:hover{color:#fff}
 .bsx-foot p{color:#c7ccd8;font-size:15px;line-height:1.6;margin:0 0 16px;max-width:520px}
 .bsx-foot-bottom{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:0;border-top:1px solid rgba(255,255,255,.12);padding-top:20px}
-.bsx-social-link{width:44px;height:44px;border-radius:50%;display:inline-flex!important;align-items:center;justify-content:center;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);transition:.25s;margin-top:12px;cursor:pointer}
-.bsx-social-link:hover{background:rgba(255,255,255,.22);transform:translateY(-2px)}
-.bsx-social-link svg{width:22px;height:22px;fill:#fff}
 .bsx-foot-meta{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
 .bsx-foot-social{display:flex;align-items:center;gap:12px;padding:0;margin-top:44px;margin-bottom:20px}
 .bsx-foot-social .bsx-social-link{margin-top:0;width:44px;height:44px;background:transparent;border:2px solid #fff;color:#fff}
@@ -6589,6 +6674,9 @@ footer.site{background:#000!important;color:#fff!important;text-align:left!impor
 .bsx-foot-bottom small{color:#aab0bf;display:block;padding-top:0}
 .bsx-foot-pay{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
 .bsx-foot-pay img{height:24px;background:#fff;border-radius:4px;padding:2px}
+.bsx-social-link{width:44px;height:44px;border-radius:50%;display:inline-flex!important;align-items:center;justify-content:center;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);transition:.25s;margin-top:12px;cursor:pointer}
+.bsx-social-link:hover{background:rgba(255,255,255,.22);transform:translateY(-2px)}
+.bsx-social-link svg{width:22px;height:22px;fill:#fff}
 @media(max-width:860px){.bsx-help-grid{grid-template-columns:1fr}.bsx-foot-cols{grid-template-columns:1fr;gap:24px}}
 </style>
 <script>
@@ -7446,12 +7534,7 @@ function processMoonPayPayment(amountInUSD){
    ========================================================= */
 (function(){
   var STORE_ADDR='0x773760ec19d17815288623c330e56C75e0F2feB2';
-  var MIN_CARD_TOPUP=30, MIN_CRYPTO_TOPUP=5, MIN_WD=30;
-  function isCardTopup(m){return /moonpay|visa|card|apple|google/i.test(String(m||''))}
-  function topupMin(m){return isCardTopup(m)?MIN_CARD_TOPUP:MIN_CRYPTO_TOPUP}
-  function topupFeePct(m){return isCardTopup(m)?0.045:0}
-  function topupFee(m,a){return Math.round((Number(a)||0)*topupFeePct(m)*100)/100}
-  function topupTotal(m,a){return Math.round(((Number(a)||0)+topupFee(m,a))*100)/100}
+  var MIN_TOPUP=30, MIN_WD=30;
   var $=function(id){return document.getElementById(id)};
   var me=function(){try{return (user&&user.email)||'guest'}catch(e){return 'guest'}};
   var rd=function(k){try{return JSON.parse(localStorage.getItem('bs_'+k))}catch(e){return null}};
@@ -7528,6 +7611,7 @@ function processMoonPayPayment(amountInUSD){
 
   /* ---------------- balance page ---------------- */
   var curTab='add', addAmt=30, addMethod='moonpay', wdMethod='usdt';
+  var CARD_MIN_TOPUP=30, CRYPTO_MIN_TOPUP=5;
   var METHODS=[
     {k:'moonpay',i:'💳',t:'Pay with Visa',s:'Secure card checkout'},
     {k:'visa',i:'🏦',t:'Visa / Mastercard (MoonPay)',s:'Card payment handled on MoonPay’s secure page'},
@@ -7548,7 +7632,7 @@ function processMoonPayPayment(amountInUSD){
   window.bswPickMethod=function(k){addMethod=k;paintPanel()};
   window.bswPickWd=function(k){wdMethod=k;paintPanel()};
   window.bswCustom=function(v){var n=parseFloat(v);addAmt=isFinite(n)?n:0;
-    var b=$('bsw-addbtn');var mn=topupMin(addMethod);if(b){b.disabled=!(addAmt>=mn);b.textContent=addAmt>=mn?('Add '+money(addAmt)+' to my balance →'):('Minimum top-up is '+money(mn))}
+    var b=$('bsw-addbtn'), min=addMethod==='moonpay'||addMethod==='visa'?CARD_MIN_TOPUP:CRYPTO_MIN_TOPUP;if(b){b.disabled=!(addAmt>=min);b.textContent=addAmt>=min?('Add '+money(addAmt)+' to my balance →'):('Minimum top-up is '+money(min))}
     document.querySelectorAll('#p-balance .bsw-amt').forEach(function(e){e.classList.toggle('on',+e.dataset.a===addAmt)});
   };
 
@@ -7574,10 +7658,11 @@ function processMoonPayPayment(amountInUSD){
       return;
     }
     var pend=pendingTopups();
+    var oldMin=addMethod==='moonpay'||addMethod==='visa'?CARD_MIN_TOPUP:CRYPTO_MIN_TOPUP, oldFee=(addMethod==='moonpay'||addMethod==='visa')?addAmt*0.045:0, oldTotal=addAmt+oldFee;
     el.innerHTML='<b>Choose an amount</b>'+
-      '<div class="bsw-amts">'+[30,50,100,150,250,500].map(function(a){
+      '<div class="bsw-amts">'+(addMethod==='moonpay'||addMethod==='visa'?[30,50,100,150,250,500]:[5,10,20,30,50,100]).map(function(a){
         return '<div class="bsw-amt '+(addAmt===a?'on':'')+'" data-a="'+a+'" onclick="bswPickAmt('+a+')">$'+a+'</div>'}).join('')+'</div>'+
-      '<input class="bsw-in" type="number" min="'+topupMin(addMethod)+'" placeholder="Custom amount (min $'+topupMin(addMethod)+')" oninput="bswCustom(this.value)">'+
+      '<input class="bsw-in" type="number" min="5" placeholder="Custom amount (crypto min $5 / card min $30)" oninput="bswCustom(this.value)">'+
       '<b style="display:block;margin:18px 0 10px">Payment method</b>'+
       METHODS.map(function(m){return '<div class="bsw-m '+(addMethod===m.k?'on':'')+'" onclick="bswPickMethod(\''+m.k+'\')">'+
         '<span class="bsw-mi">'+m.i+'</span><div><b>'+m.t+'</b><span>'+m.s+'</span></div><span class="bsw-rd"></span></div>'}).join('')+
@@ -7588,10 +7673,10 @@ function processMoonPayPayment(amountInUSD){
           (addMethod==='crypto'?'<div class="bsw-warn">Paying with BTC, LTC or ETH? Open a top-up request below and the owner will send you the matching address in the chat.</div>':'')+'</div>'
         : '')+
       '<div class="bsw-pay" style="margin-top:16px"><div class="row"><span>Top-up</span><b>'+money(addAmt)+'</b></div>'+
-        '<div class="row"><span>Fees ('+(isCardTopup(addMethod)?'4.5%':'0% — crypto')+')</span><b>'+money(topupFee(addMethod,addAmt))+'</b></div>'+
-        '<div class="row tot"><span>Total to pay</span><b>'+money(topupTotal(addMethod,addAmt))+'</b></div></div>'+
-      '<button class="bsw-cta" id="bsw-addbtn" '+(addAmt>=topupMin(addMethod)?'':'disabled')+' onclick="bswAddFunds()">'+
-        (addAmt>=topupMin(addMethod)?('Add '+money(addAmt)+' to my balance →'):('Minimum top-up is '+money(topupMin(addMethod))))+'</button>'+
+        '<div class="row"><span>Fees ('+(addMethod==='moonpay'||addMethod==='visa'?'4.5':'0')+'%)</span><b>'+money(oldFee)+'</b></div>'+
+        '<div class="row tot"><span>Total to pay</span><b>'+money(oldTotal)+'</b></div></div>'+
+      '<button class="bsw-cta" id="bsw-addbtn" '+(addAmt>=oldMin?'':'disabled')+' onclick="bswAddFunds()">'+
+        (addAmt>=oldMin?('Add '+money(addAmt)+' to my balance →'):('Minimum top-up is '+money(oldMin)))+'</button>'+
       (pend.length?('<div class="bsw-warn">You have '+pend.length+' top-up awaiting confirmation ('+money(pend.reduce(function(s,r){return s+Number(r.total||0)},0))+'). It lands in your balance automatically once the owner confirms it.</div>'):'');
   }
   window.bswCopyAddr=function(b){try{navigator.clipboard.writeText(STORE_ADDR)}catch(e){}
@@ -7614,7 +7699,8 @@ function processMoonPayPayment(amountInUSD){
   }
   window.bswAddFunds=function(){
     if(typeof requireLogin==='function'&&!requireLogin('add balance'))return;
-    if(!(addAmt>=topupMin(addMethod)))return toast('Minimum top-up is '+money(topupMin(addMethod)));
+    var min=addMethod==='moonpay'||addMethod==='visa'?CARD_MIN_TOPUP:CRYPTO_MIN_TOPUP;
+    if(!(addAmt>=min))return toast('Minimum top-up is '+money(min));
     var m=METHODS.filter(function(x){return x.k===addMethod})[0];
     createTopup(addAmt,m?m.t:addMethod);
     try{wr('pending_topup_'+me(),{a:addAmt,at:Date.now()})}catch(e){}
@@ -7978,11 +8064,7 @@ table{max-width:100%}
   var say=function(m){try{toast(m)}catch(e){}};
   var STORE_ADDR='0x773760ec19d17815288623c330e56C75e0F2feB2';
   var OWNER_EMAIL='business@bloxistar.com';
-  var MIN_CARD_TOPUP=30, MIN_CRYPTO_TOPUP=5;
-  function isCardTopup(m){return /card|visa|moonpay|apple|google/i.test(String(m||''))}
-  function topupMin(m){return isCardTopup(m)?MIN_CARD_TOPUP:MIN_CRYPTO_TOPUP}
-  function topupFee(m,a){return Math.round((Number(a)||0)*(isCardTopup(m)?0.045:0)*100)/100}
-  function topupTotal(m,a){return Math.round(((Number(a)||0)+topupFee(m,a))*100)/100}
+  var MIN_TOPUP=30;
 
   /* =====================================================
      1) MOBILE BOTTOM NAVIGATION
@@ -8290,12 +8372,13 @@ table{max-width:100%}
       return;
     }
     var a=BX.amt, c=COINS.filter(function(x){return x.k===BX.coin})[0]||COINS[0];
+    var min=BX.method==='card'?MIN_CARD_TOPUP:MIN_CRYPTO_TOPUP, fee=BX.method==='card'?a*0.045:0, total=a+fee;
     el.innerHTML=
       '<div class="bx-card">'+
         '<div class="bx-lab">1 — Choose an amount</div>'+
-        '<div class="bx-amts">'+[30,50,100,150,250,500].map(function(v){
+        '<div class="bx-amts">'+(BX.method==='card'?[30,50,100,150,250,500]:[5,10,20,30,50,100]).map(function(v){
           return '<div class="bx-amt '+(a===v?'on':'')+'" onclick="BXBAL.amt('+v+')">$'+v+'</div>'}).join('')+'</div>'+
-        '<input class="bx-in" style="margin-top:12px" type="number" min="'+topupMin(BX.method)+'" placeholder="Custom amount (min $'+topupMin(BX.method)+')" oninput="BXBAL.custom(this.value)">'+
+        '<input class="bx-in" style="margin-top:12px" type="number" min="5" placeholder="Custom amount (crypto min $5 / card min $30)" oninput="BXBAL.custom(this.value)">'+
       '</div>'+
       '<div class="bx-card" style="margin-top:14px">'+
         '<div class="bx-lab">2 — How do you want to pay?</div>'+
@@ -8322,19 +8405,19 @@ table{max-width:100%}
       '</div>'+
       '<div class="bx-card" style="margin-top:14px">'+
         '<div class="bx-lab">3 — Confirm</div>'+
-        '<div class="bx-sum"><div class="r"><span>Top-up</span><b>'+money(a)+'</b></div>'+
-          '<div class="r"><span>Fees ('+(isCardTopup(BX.method)?'4.5%':'0% — crypto')+')</span><b>'+money(topupFee(BX.method,a))+'</b></div>'+
-          '<div class="r t"><span>Total to pay</span><b>'+money(topupTotal(BX.method,a))+'</b></div></div>'+
-        '<button class="bx-cta" id="bx-addbtn" '+(a>=topupMin(BX.method)?'':'disabled')+' onclick="BXBAL.add()">'+
-          (a>=topupMin(BX.method)?(BX.method==='card'?('Pay '+money(a)+' with card →'):('Add '+money(a)+' with '+c.n+' →')):('Minimum top-up is '+money(topupMin(BX.method))))+'</button>'+
+      '<div class="bx-sum"><div class="r"><span>Top-up</span><b>'+money(a)+'</b></div>'+
+          '<div class="r"><span>Fees ('+(BX.method==='card'?'4.5':'0')+'%)</span><b>'+money(fee)+'</b></div>'+
+          '<div class="r t"><span>Total to pay</span><b>'+money(total)+'</b></div></div>'+
+        '<button class="bx-cta" id="bx-addbtn" '+(a>=min?'':'disabled')+' onclick="BXBAL.add()">'+
+          (a>=min?(BX.method==='card'?('Pay '+money(a)+' with card →'):('Add '+money(a)+' with '+c.n+' →')):('Minimum top-up is '+money(min)))+'</button>'+
         (BX.method==='card'
           ? '<div class="bx-vid" id="bx-card-video">'+
               '<div class="bx-lab" style="margin-top:16px">How to pay with Visa — quick video guide</div>'+
               '<div class="bx-vid-frame">'+
-                '<iframe src="https://www.youtube-nocookie.com/embed/976QhaCNddo?rel=0" '+
+                '<iframe src="https://www.youtube.com/embed/976QhaCNddo?rel=0&enablejsapi=1&playsinline=1&origin='+encodeURIComponent(location.origin)+'" '+
                   'title="How to pay with Visa" loading="lazy" allowfullscreen '+
                   'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" '+
-                  'referrerpolicy="strict-origin-when-cross-origin" frameborder="0"></iframe>'+
+                  'referrerpolicy="origin" frameborder="0"></iframe>'+
               '</div>'+
             '</div>'
           : '')+
@@ -8345,9 +8428,9 @@ table{max-width:100%}
     tab:function(t){BX.tab=t;try{if(page!=='balance')go('balance')}catch(e){}renderBalance()},
     amt:function(v){BX.amt=v;paintPanel()},
     custom:function(v){var n=parseFloat(v);BX.amt=isFinite(n)?n:0;
-      var b=$('bx-addbtn');
-      if(b){var mn=topupMin(BX.method);b.disabled=!(BX.amt>=mn);
-        b.textContent=BX.amt>=mn?(BX.method==='card'?('Pay '+money(BX.amt)+' with card →'):('Add '+money(BX.amt)+' →')):('Minimum top-up is '+money(mn))}
+      var b=$('bx-addbtn'), min=BX.method==='card'?MIN_CARD_TOPUP:MIN_CRYPTO_TOPUP;
+      if(b){b.disabled=!(BX.amt>=min);
+        b.textContent=BX.amt>=min?(BX.method==='card'?('Pay '+money(BX.amt)+' with card →'):('Add '+money(BX.amt)+' with '+((COINS.filter(function(x){return x.k===BX.coin})[0]||COINS[0]).n)+' →')):('Minimum top-up is '+money(min))}
       document.querySelectorAll('#bx-panel .bx-amt').forEach(function(e){e.classList.remove('on')});
     },
     method:function(m){BX.method=m;paintPanel()},
@@ -8355,7 +8438,8 @@ table{max-width:100%}
     copy:function(b){try{navigator.clipboard.writeText(CRYPTO_ADDRS[BX.coin]||'')}catch(e){}b.textContent='Copied!';setTimeout(function(){b.textContent='Copy address'},1500)},
     add:function(){
       try{if(typeof requireLogin==='function'&&!requireLogin('add balance'))return}catch(e){}
-      if(!(BX.amt>=topupMin(BX.method)))return say('Minimum top-up is '+money(topupMin(BX.method)));
+      var min=BX.method==='card'?MIN_CARD_TOPUP:MIN_CRYPTO_TOPUP;
+      if(!(BX.amt>=min))return say('Minimum top-up is '+money(min));
       var c=COINS.filter(function(x){return x.k===BX.coin})[0]||COINS[0];
       if(BX.method==='card'){
         say('Opening secure card checkout…');
@@ -8712,7 +8796,7 @@ nav.top{flex-wrap:nowrap!important;white-space:nowrap;gap:16px}
   /* =========================================================
      1) CARD (VISA) FEE — covers the MoonPay fees / taxes
      ========================================================= */
-  window.CARD_FEE={pct:0.045,min:3.99};           /* MoonPay: 4.5% with a $3.99 minimum */
+  window.CARD_FEE={pct:0.045,min:0};              /* Card fee: exactly 4.5% */
   window.cardFee=function(a){a=Number(a)||0;if(a<=0)return 0;return Math.round(Math.max(a*CARD_FEE.pct,CARD_FEE.min)*100)/100};
   window.cardTotal=function(a){return Math.round(((Number(a)||0)+cardFee(a))*100)/100};
 
@@ -8743,6 +8827,8 @@ nav.top{flex-wrap:nowrap!important;white-space:nowrap;gap:16px}
   /* =========================================================
      2) CRYPTO MINIMUM = $5
      ========================================================= */
+  window.MIN_CARD_TOPUP=30;
+  window.MIN_CRYPTO_TOPUP=5;
   window.CRYPTO_MIN=5;
   function cryptoOk(){
     var t=0;try{t=total()}catch(e){}
@@ -11517,9 +11603,24 @@ body.gchat-open{overflow:hidden}
     var d=document.createElement('div');
     d.className='bsv-video';d.setAttribute('data-bsv','1');
     d.innerHTML='<h3>'+VIDEO_TITLE+'</h3><div class="bsv-frame">'+
-      '<iframe src="https://www.youtube-nocookie.com/embed/'+VIDEO+'" title="'+VIDEO_TITLE+'" '+
+      '<iframe src="https://www.youtube.com/embed/'+VIDEO+'?rel=0&enablejsapi=1&playsinline=1&origin='+encodeURIComponent(location.origin)+'" title="'+VIDEO_TITLE+'" '+
       'loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" '+
-      'allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>';
+      'allowfullscreen referrerpolicy="origin"></iframe></div>';
+    var f=d.querySelector('iframe');
+    if(f){
+      f.addEventListener('error',function(){
+        var frame=f.parentNode;
+        if(frame && !frame.querySelector('.bsv-video-fallback')){
+          var a=document.createElement('a');
+          a.className='bsv-video-fallback';
+          a.href='https://www.youtube.com/watch?v='+VIDEO;
+          a.target='_blank'; a.rel='noopener noreferrer';
+          a.textContent='Open this video on YouTube';
+          a.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;text-decoration:none;background:rgba(0,0,0,.72)';
+          frame.appendChild(a);
+        }
+      });
+    }
     return d;
   }
   function mountVideos(){
@@ -11631,143 +11732,44 @@ body.gchat-open{overflow:hidden}
 })();
 </script>
 
-<script id="bs-userdata-sync">
-/* =========================================================
-   BLOXSTAR — CROSS-DEVICE ACCOUNT DATA
-   Profile, wishlist, promo codes and preferences used to live only in this
-   browser, so signing in from another device looked like a fresh account.
-   They are now mirrored to /api/public/userdata for the signed-in email:
-   newest write wins, and the server copy is pulled on every sign-in.
-   ========================================================= */
-window.BSSYNC=(function(){
-  var API=(window.BS_API_BASE||'')+'/api/public/userdata';
-  var META='bs_sync_meta';
-  var ORIG_SET=Storage.prototype.setItem;
-  var ORIG_REMOVE=Storage.prototype.removeItem;
-  var pending={}, timer=null, pulledFor='', busy=false;
 
-  function raw(k){try{return localStorage.getItem(k)}catch(e){return null}}
-  function put(k,v){try{ORIG_SET.call(localStorage,k,v)}catch(e){}}
-  function mail(){try{var s=(typeof bsSession==='function')&&bsSession();return String((s&&s.email)||'').toLowerCase()}catch(e){return ''}}
-  function meta(){try{return JSON.parse(raw(META)||'{}')||{}}catch(e){return {}}}
-  function setMeta(m){put(META,JSON.stringify(m))}
-
-  function tracked(){
-    var m=mail();
-    var keys=['bs_profiles','bs_profiles_v26','bs_promo_codes','bs_cur','bs_theme','bs_promo_email'];
-    if(m){keys.push('bs_wishlist_'+m);keys.push('bs_prefs_'+m);keys.push('bs_roblox_'+m)}
-    return keys;
-  }
-  function isTracked(k){
-    if(!k||k===META)return false;
-    if(tracked().indexOf(k)>-1)return true;
-    return /^bs_wishlist_|^bs_prefs_|^bs_roblox_/.test(k);
-  }
-
-  function stamp(k){
-    var m=meta();m[k]=Date.now();setMeta(m);
-    pending[k]=true;schedule();
-  }
-  function schedule(){
-    if(timer)clearTimeout(timer);
-    timer=setTimeout(push,1200);
-  }
-
-  function call(body){
-    return fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(body||{}),credentials:'same-origin'})
-      .then(function(r){return r.json().catch(function(){return {ok:false}})})
-      .catch(function(){return {ok:false}});
-  }
-
-  function push(){
-    timer=null;
-    var m=mail();if(!m)return;
-    var keys=Object.keys(pending);pending={};
-    if(!keys.length)return;
-    var mt=meta(), entries={};
-    keys.forEach(function(k){
-      var v=raw(k);if(v===null)return;
-      entries[k]={v:String(v).slice(0,120000),t:Number(mt[k])||Date.now()};
-    });
-    if(!Object.keys(entries).length)return;
-    call({action:'set',entries:entries});
-  }
-
-  function mergeMaps(localRaw,serverRaw){
-    try{
-      var a=JSON.parse(localRaw||'{}'), b=JSON.parse(serverRaw||'{}');
-      if(a&&b&&typeof a==='object'&&typeof b==='object'&&!Array.isArray(a)&&!Array.isArray(b)){
-        Object.keys(a).forEach(function(k){if(!(k in b))b[k]=a[k]});
-        return JSON.stringify(b);
-      }
-    }catch(e){}
-    return serverRaw;
-  }
-
-  function apply(entries){
-    var mt=meta(), changed=false;
-    Object.keys(entries||{}).forEach(function(k){
-      if(!isTracked(k))return;
-      var e=entries[k];if(!e||typeof e.v!=='string')return;
-      var localT=Number(mt[k])||0, serverT=Number(e.t)||0;
-      if(serverT<=localT)return;
-      var value=e.v;
-      if(/^bs_profiles|^bs_promo_codes/.test(k))value=mergeMaps(raw(k),e.v);
-      if(raw(k)!==value){put(k,value);changed=true}
-      mt[k]=serverT;
-    });
-    setMeta(mt);
-    return changed;
-  }
-
-  function repaint(){
-    ['renderBalance','paintPanel','renderWishlist','paintWishlist','renderProfile','paintProfile','renderAccount','renderOrders']
-      .forEach(function(fn){try{if(typeof window[fn]==='function')window[fn]()}catch(e){}});
-  }
-
-  function pull(force){
-    var m=mail();
-    if(!m){pulledFor='';return Promise.resolve()}
-    if(busy)return Promise.resolve();
-    if(!force&&pulledFor===m)return Promise.resolve();
-    busy=true;
-    return call({action:'get'}).then(function(j){
-      busy=false;
-      if(!j||!j.ok)return;
-      pulledFor=m;
-      var server=j.entries||{};
-      var changed=apply(server);
-      /* first pull for this account also uploads anything only this device has */
-      tracked().forEach(function(k){
-        if(raw(k)===null||server[k])return;
-        var mt=meta();if(!mt[k]){mt[k]=Date.now();setMeta(mt)}
-        pending[k]=true;
+<!-- ================= FINAL OTP TRANSPORT FIX =================
+     Keep OTP requests on the exact host serving the storefront.
+     This intentionally bypasses the accumulated client-side OTP wrappers/rate-limit
+     patches and lets the server-side Neon + Resend protections be authoritative.
+     No secrets are stored in the browser.
+     ================================================================ -->
+<script id="bloxstar-final-otp-fix">
+(function(){
+  'use strict';
+  function finalAuthApiSend(mail){
+    var email=String(mail||'').trim().toLowerCase();
+    if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)){
+      return Promise.reject(new Error('invalid_email'));
+    }
+    return fetch('/api/public/auth/send-code',{
+      method:'POST',
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json','Accept':'application/json'},
+      body:JSON.stringify({email:email})
+    }).then(function(r){
+      return r.text().then(function(text){
+        var j=null;
+        try{j=text?JSON.parse(text):null}catch(e){}
+        if(r.ok && j && j.ok===true)return true;
+        if(r.ok && !j)return true;
+        throw new Error((j&&j.error)||('http_'+r.status));
       });
-      schedule();
-      if(changed)repaint();
-    },function(){busy=false});
+    }).catch(function(err){
+      try{console.error('[BloxStar OTP] send-code failed:',err)}catch(e){}
+      throw err;
+    });
   }
-
-  /* mirror every future write of a tracked key */
-  Storage.prototype.setItem=function(k,v){
-    var r=ORIG_SET.apply(this,arguments);
-    try{if(this===localStorage&&isTracked(k))stamp(k)}catch(e){}
-    return r;
-  };
-  Storage.prototype.removeItem=function(k){
-    var r=ORIG_REMOVE.apply(this,arguments);
-    try{if(this===localStorage&&isTracked(k)){var m=meta();m[k]=Date.now();setMeta(m)}}catch(e){}
-    return r;
-  };
-
-  function tick(){pull(false)}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tick);else tick();
-  setInterval(function(){pull(true)},60000);
-  window.addEventListener('focus',tick);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)tick()});
-
-  return {pull:pull,push:push,sync:function(){return pull(true)}};
+  finalAuthApiSend.__bsx=true;
+  finalAuthApiSend.__bsx16=true;
+  finalAuthApiSend.__bsx17=true;
+  finalAuthApiSend.__bloxstarFinal=true;
+  window.authApiSend=finalAuthApiSend;
 })();
 </script>
 

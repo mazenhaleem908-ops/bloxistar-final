@@ -1,4 +1,4 @@
-import { CATALOG } from "../lib/catalog";
+import { CATALOG } from "@/lib/catalog";
 
 export const SITE = "https://www.bloxistar.com";
 

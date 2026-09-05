@@ -143,6 +143,12 @@ END; $$;
 
 -- Wallet / balance (server-side, cross-device). Previously the balance was
 -- stored in the browser's localStorage, which made it disappear on other devices.
+CREATE TABLE IF NOT EXISTS user_account_data (
+  email text PRIMARY KEY,
+  data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS wallets (
   email text PRIMARY KEY,
   balance numeric(12,2) NOT NULL DEFAULT 0,

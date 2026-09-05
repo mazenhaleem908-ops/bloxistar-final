@@ -142,7 +142,6 @@
     color: var(--color-foreground);
   }
 }
-
 /* BloxStar operations console. Kept scoped so the customer storefront remains unchanged. */
 .admin-app {
   --admin-ink: #202638;
@@ -417,4 +416,3 @@
   .admin-stat-grid { grid-template-columns: repeat(2, 1fr); }
   .admin-staff-grid { grid-template-columns: 1fr; }
 }
-

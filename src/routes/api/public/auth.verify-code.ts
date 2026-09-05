@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { jsonResponse, preflight, safeHandler, sameOrigin } from "@/lib/http";
 import { clientIp, distributedRateLimit } from "@/lib/rate-limit";
-import { sessionCookie, newToken, isAdminEmail, hashCode, timingSafeEqual } from "@/lib/auth";
+import { sessionCookie, newToken, isAdminEmail } from "@/lib/auth";
 
 export const Route = createFileRoute("/api/public/auth/verify-code")({
   server: {
@@ -53,7 +53,7 @@ export const Route = createFileRoute("/api/public/auth/verify-code")({
             await sql`DELETE FROM auth_codes WHERE id = ${row.id}`;
             return json({ ok: false, error: "expired" }, 429);
           }
-          if (!timingSafeEqual(String(row.code).trim(), await hashCode(`${email}:${code}`))) {
+          if (String(row.code).trim() !== code) {
             await sql`UPDATE auth_codes SET attempts = attempts + 1 WHERE id = ${row.id}`;
             return json({ ok: false, error: "invalid" }, 400);
           }

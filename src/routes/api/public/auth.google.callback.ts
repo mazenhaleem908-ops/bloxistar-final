@@ -7,7 +7,7 @@
 // hand-off code (never the session token itself).
 import { createFileRoute } from "@tanstack/react-router";
 
-import { hashCode, isAdminEmail, newToken, randomUrlSafe, sessionCookie, verifyOidcJwt } from "@/lib/auth";
+import { isAdminEmail, newToken, randomUrlSafe, sessionCookie, verifyOidcJwt } from "@/lib/auth";
 import { preflight } from "@/lib/http";
 import { clientIp, distributedRateLimit } from "@/lib/rate-limit";
 
@@ -137,7 +137,7 @@ export const Route = createFileRoute("/api/public/auth/google/callback")({
           await sql`DELETE FROM auth_login_codes WHERE expires_at < now()`;
           await sql`
             INSERT INTO auth_login_codes (code, token, email, admin, name, picture, expires_at)
-            VALUES (${await hashCode(handoff)}, ${token}, ${email}, ${admin}, ${name}, ${picture}, now() + interval '2 minutes')
+            VALUES (${handoff}, ${token}, ${email}, ${admin}, ${name}, ${picture}, now() + interval '2 minutes')
           `;
 
           // The email is already proven by Google, so no OTP is required.

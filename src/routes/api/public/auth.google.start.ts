@@ -13,9 +13,21 @@ import { preflight } from "@/lib/http";
 import { clientIp, distributedRateLimit } from "@/lib/rate-limit";
 
 export function googleRedirectUri(request: Request): string {
-  const pinned = process.env["GOOGLE_REDIRECT_URI"];
-  if (pinned) return pinned;
-  return `${requestOrigin(request)}/api/public/auth/google/callback`;
+  const origin = requestOrigin(request);
+  const pinned = (process.env["GOOGLE_REDIRECT_URI"] || "").trim();
+  // A pinned redirect URI that belongs to another host (old domain, preview
+  // deployment) makes Google answer redirect_uri_mismatch, so it is only used
+  // when it actually matches the host the visitor is on.
+  if (pinned) {
+    try {
+      const pinnedHost = new URL(pinned).host.toLowerCase().replace(/^www\./, "");
+      const currentHost = new URL(origin).host.toLowerCase().replace(/^www\./, "");
+      if (pinnedHost === currentHost) return pinned;
+    } catch {
+      /* malformed pin — fall through to the request-derived value */
+    }
+  }
+  return `${origin}/api/public/auth/google/callback`;
 }
 
 export const Route = createFileRoute("/api/public/auth/google/start")({

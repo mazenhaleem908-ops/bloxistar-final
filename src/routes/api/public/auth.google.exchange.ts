@@ -3,7 +3,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { jsonResponse, preflight, safeHandler, sameOrigin } from "@/lib/http";
-import { sessionCookie, isAdminEmail, hashCode } from "@/lib/auth";
+import { sessionCookie, isAdminEmail } from "@/lib/auth";
 import { clientIp, distributedRateLimit } from "@/lib/rate-limit";
 
 type LoginCodeRow = {
@@ -41,7 +41,7 @@ export const Route = createFileRoute("/api/public/auth/google/exchange")({
           if (!(await distributedRateLimit(sql, `googleexchange:ip:${clientIp(request)}`, 30, 900000))) return json({ ok: false, error: "rate_limited" }, 429);
 
           const rows = (await sql`
-            DELETE FROM auth_login_codes WHERE code = ${await hashCode(code)}
+            DELETE FROM auth_login_codes WHERE code = ${code}
             RETURNING token, email, admin, name, picture, expires_at
           `) as LoginCodeRow[];
           const row = rows[0];

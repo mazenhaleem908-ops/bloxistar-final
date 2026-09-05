@@ -1,17 +1,15 @@
 export type HealthReport = {
-  ok: true;
-  service: "bloxstar";
-  uptimeSeconds: number;
+  status: "ok";
+  service: string;
   timestamp: string;
+  uptime: number;
 };
-
-const startedAt = Date.now();
 
 export function buildHealthReport(): HealthReport {
   return {
-    ok: true,
+    status: "ok",
     service: "bloxstar",
-    uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
     timestamp: new Date().toISOString(),
+    uptime: typeof process !== "undefined" && process.uptime ? process.uptime() : 0,
   };
 }

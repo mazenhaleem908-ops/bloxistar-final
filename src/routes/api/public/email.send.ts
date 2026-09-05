@@ -9,6 +9,7 @@ import {
 import { clientIp, distributedRateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { cookieValue, SESSION_COOKIE } from "@/lib/auth";
 import { sameOrigin } from "@/lib/http";
+import { sendResendEmail } from "@/lib/resend";
 
 /**
  * Transactional email relay (Resend).
@@ -75,25 +76,15 @@ export const Route = createFileRoute("/api/public/email/send")({
         const text = sanitizeText(body["text"]);
         if (!html && !text) return json({ ok: false, error: "invalid_payload" }, 400);
 
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${apiKey}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            from: sender.header,
-            to,
-            reply_to: sender.replyTo,
-            subject,
-            ...(html ? { html } : {}),
-            ...(text ? { text } : {}),
-          }),
+        const sent = await sendResendEmail({
+          from: sender.header,
+          to,
+          reply_to: sender.replyTo,
+          subject,
+          ...(html ? { html } : {}),
+          ...(text ? { text } : {}),
         });
-
-        if (!res.ok) {
-          const detail = await res.text();
-          console.error("[email/send] resend failed", res.status, detail);
+        if (!sent.ok) {
           return json({ ok: false, error: "email_send_failed" }, 502);
         }
 

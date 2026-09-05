@@ -1,17 +1,51 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { isAdminEmail } from "@/lib/auth";
-import { adminSessionFor, can, type AdminSession } from "@/lib/admin-auth";
+import { cookieValue, isAdminEmail, SESSION_COOKIE } from "@/lib/auth";
 import { jsonResponse, sameOrigin, safeHandler } from "@/lib/http";
 
-type Gate = { error: Response; session?: undefined } | { error?: undefined; session: AdminSession };
+type Session = { email: string; admin: boolean } | null;
 
-async function requireAdmin(request: Request): Promise<Gate> {
-  if (!sameOrigin(request)) return { error: jsonResponse(request, { ok: false, error: "forbidden" }, 403) };
-  if (!process.env["DATABASE_URL"]) return { error: jsonResponse(request, { ok: false, error: "forbidden" }, 403) };
+async function getSession(request: Request): Promise<Session> {
+  const token = cookieValue(request, SESSION_COOKIE);
+  if (!token || !process.env.DATABASE_URL) return null;
   const { db } = await import("@/lib/db");
-  const session = await adminSessionFor(request, db() as never);
-  if (!session) return { error: jsonResponse(request, { ok: false, error: "forbidden" }, 403) };
-  return { session };
+  const sql = db();
+  const rows = (await sql`SELECT email, expires_at FROM auth_sessions WHERE token=${token} LIMIT 1`) as Array<{email:string;expires_at:string}>;
+  const row = rows[0];
+  if (!row || new Date(row.expires_at).getTime() <= Date.now()) return null;
+  const email = row.email.toLowerCase();
+  if (isAdminEmail(email)) return { email, admin: true };
+  const staff = (await sql`SELECT status FROM admin_staff WHERE lower(email)=${email} LIMIT 1`) as Array<{status:string}>;
+  return { email, admin: staff[0]?.status === "active" };
+}
+
+type Role = "owner" | "finance" | "product" | "support" | "moderator";
+const ROLE_PERMISSIONS: Record<Role, string[]> = {
+  owner: ["all"],
+  finance: ["payments", "wallet", "order_status"],
+  product: ["products", "promotions"],
+  support: ["support", "order_status"],
+  moderator: ["support", "order_status"],
+};
+
+async function requireAdmin(request: Request) {
+  if (!sameOrigin(request)) return { error: jsonResponse(request, {ok:false,error:"forbidden"}, 403) };
+  const token = cookieValue(request, SESSION_COOKIE);
+  if (!token || !process.env.DATABASE_URL) return { error: jsonResponse(request, {ok:false,error:"forbidden"}, 403) };
+  const { db } = await import("@/lib/db"); const sql = db();
+  const rows = await sql`SELECT email, expires_at FROM auth_sessions WHERE token=${token} LIMIT 1` as Array<{email:string;expires_at:string}>;
+  const row=rows[0];
+  if(!row || new Date(row.expires_at).getTime()<=Date.now()) return { error: jsonResponse(request,{ok:false,error:"forbidden"},403) };
+  const email=row.email.toLowerCase();
+  if(isAdminEmail(email)) return { session:{email,admin:true,role:"owner" as Role,permissions:["all"]} };
+  const staff=await sql`SELECT role,status,permissions FROM admin_staff WHERE lower(email)=${email} LIMIT 1` as Array<{role:string;status:string;permissions:unknown}>;
+  const st=staff[0];
+  if(!st || st.status!=="active" || !(st.role in ROLE_PERMISSIONS)) return { error: jsonResponse(request,{ok:false,error:"forbidden"},403) };
+  const role=st.role as Role;
+  return { session:{email,admin:true,role,permissions:ROLE_PERMISSIONS[role]} };
+}
+
+function can(session:{role:Role;permissions:string[]}, permission:string):boolean {
+  return session.permissions.includes("all") || session.permissions.includes(permission);
 }
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
@@ -56,12 +90,12 @@ async function action(request: Request, body: Record<string,unknown>) {
   const gate = await requireAdmin(request); if (gate.error) return gate.error;
   const { session } = gate;
   const { db } = await import("@/lib/db"); const sql = db();
-  const actionName=String(body['action']||"");
+  const actionName=String(body.action||"");
   const writeAudit=async(resource:string,details:unknown={})=>{
     await sql`INSERT INTO admin_audit_logs(admin_email,action,resource,details) VALUES(${session.email},${actionName},${resource},${JSON.stringify(details)}::jsonb)`;
   };
   if (actionName==="order_status") {
-    const code=String(body['code']||"").trim(), status=String(body['status']||"").trim();
+    const code=String(body.code||"").trim(), status=String(body.status||"").trim();
     if(!/^\d{6}$/.test(code) || !["processing","delivered","cancelled","paid"].includes(status)) return jsonResponse(request,{ok:false,error:"invalid"},400);
     if(status==="paid" ? !can(session,"payments") : !can(session,"order_status")) return jsonResponse(request,{ok:false,error:"forbidden"},403);
     if(status==="cancelled") {
@@ -77,30 +111,30 @@ async function action(request: Request, body: Record<string,unknown>) {
   }
   if(actionName==="promotion") {
     if(!can(session,"promotions")) return jsonResponse(request,{ok:false,error:"forbidden"},403);
-    const code=String(body['code']||"").trim().toUpperCase().slice(0,40), offer=String(body['offer']||"").trim().slice(0,200);
+    const code=String(body.code||"").trim().toUpperCase().slice(0,40), offer=String(body.offer||"").trim().slice(0,200);
     if(!code||!offer) return jsonResponse(request,{ok:false,error:"invalid"},400);
-    await sql`INSERT INTO admin_promotions(code,offer,usage_limit,expires_at,enabled) VALUES(${code},${offer},${Math.max(0,Math.floor(n(body['usageLimit'])))},${body['expiresAt']?String(body['expiresAt']):null},true) ON CONFLICT(code) DO UPDATE SET offer=EXCLUDED.offer,usage_limit=EXCLUDED.usage_limit,expires_at=EXCLUDED.expires_at,enabled=true`;
+    await sql`INSERT INTO admin_promotions(code,offer,usage_limit,expires_at,enabled) VALUES(${code},${offer},${Math.max(0,Math.floor(n(body.usageLimit)))},${body.expiresAt?String(body.expiresAt):null},true) ON CONFLICT(code) DO UPDATE SET offer=EXCLUDED.offer,usage_limit=EXCLUDED.usage_limit,expires_at=EXCLUDED.expires_at,enabled=true`;
     await writeAudit(code,{offer}); return jsonResponse(request,{ok:true});
   }
   if(actionName==="promotion_toggle") {
     if(!can(session,"promotions")) return jsonResponse(request,{ok:false,error:"forbidden"},403);
-    const code=String(body['code']||"").trim().toUpperCase();
+    const code=String(body.code||"").trim().toUpperCase();
     await sql`UPDATE admin_promotions SET enabled=NOT enabled WHERE code=${code}`;
     await writeAudit(code); return jsonResponse(request,{ok:true});
   }
   if(actionName==="staff") {
     if(!can(session,"all")) return jsonResponse(request,{ok:false,error:"forbidden"},403);
-    const email=String(body['email']||"").trim().toLowerCase(), role=String(body['role']||"support");
+    const email=String(body.email||"").trim().toLowerCase(), role=String(body.role||"support");
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse(request,{ok:false,error:"invalid_email"},400);
     if(!["owner","finance","product","support","moderator"].includes(role)) return jsonResponse(request,{ok:false,error:"invalid_role"},400);
     const permissions = role==="owner" ? ["all"] : role==="finance" ? ["payments","wallet"] : role==="product" ? ["products"] : ["support"];
-    await sql`INSERT INTO admin_staff(email,name,role,status,permissions) VALUES(${email},${String(body['name']||"").slice(0,100)},${role},'active',${JSON.stringify(permissions)}::jsonb)
+    await sql`INSERT INTO admin_staff(email,name,role,status,permissions) VALUES(${email},${String(body.name||"").slice(0,100)},${role},"active",${JSON.stringify(permissions)}::jsonb)
       ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,role=EXCLUDED.role,status='active',permissions=EXCLUDED.permissions,updated_at=now()`;
     await writeAudit(email,{role}); return jsonResponse(request,{ok:true});
   }
   if(actionName==="staff_disable") {
     if(!can(session,"all")) return jsonResponse(request,{ok:false,error:"forbidden"},403);
-    const email=String(body['email']||"").trim().toLowerCase();
+    const email=String(body.email||"").trim().toLowerCase();
     if(isAdminEmail(email)) return jsonResponse(request,{ok:false,error:"protected_admin"},409);
     await sql`UPDATE admin_staff SET status='disabled',updated_at=now() WHERE lower(email)=${email}`;
     await writeAudit(email); return jsonResponse(request,{ok:true});

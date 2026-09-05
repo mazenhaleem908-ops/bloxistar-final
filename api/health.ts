@@ -1,31 +1,18 @@
 import { buildHealthReport } from "../lib/health";
 
-type HealthRequest = {
-  method?: string;
-};
+export const config = { runtime: "nodejs" };
 
-type HealthResponse = {
-  status: (code: number) => HealthResponse;
-  json: (body: unknown) => void;
-  setHeader: (name: string, value: string) => void;
-  end: (body?: string) => void;
-};
-
-// Vercel serverless health check. Lives at the repository root on purpose:
-// Vercel zero-config picks up api/*.ts as standalone functions.
-export default function handler(req: HealthRequest, res: HealthResponse): void {
-  res.setHeader("Cache-Control", "no-store");
-
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    res.setHeader("Allow", "GET, HEAD");
-    res.status(405).json({ ok: false, error: "method_not_allowed" });
-    return;
+export default function handler(request: Request): Response {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
+      status: 405,
+      headers: { "content-type": "application/json", allow: "GET, HEAD" },
+    });
   }
 
-  const report = buildHealthReport();
-  if (req.method === "HEAD") {
-    res.status(200).end();
-    return;
-  }
-  res.status(200).json(report);
+  const body = JSON.stringify(buildHealthReport());
+  return new Response(request.method === "HEAD" ? null : body, {
+    status: 200,
+    headers: { "content-type": "application/json", "cache-control": "no-store" },
+  });
 }
